@@ -1,0 +1,387 @@
+local rs = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local Event = rs:WaitForChild("Remote_Event")
+local mapa = workspace["\231\148\181\230\162\175"].Left4
+local sellzonePart = mapa["\229\141\135\233\153\141\229\143\176"].Ground
+local doorController = mapa.DoorController
+local endRoot = mapa["\230\142\167\229\136\182\229\143\176"]
+local continuePart = endRoot.Yellowky.Main
+local retreatPart  = endRoot.Greenky.Main
+local cajasFolder = workspace.GameSystem.InteractiveItem
+local itemsFolder = workspace.GameSystem.Loots.World
+local monstersFolder = workspace.GameSystem.Monsters
+local sellremote = "\x92\x16\x93\xC3\xC7\x02\x93\xCB\xC0sz\xD1 \x00\x00\x00\xCB@tN\xE3\xE0\x00\x00\x00\xCB@z\x1D8`\x00\x00\x00\xCBBy\xAFC\xBF<@\x00"
+local lastSafeZoneState = nil
+local remoteActivated = false
+
+_G.autofarm = false
+
+
+
+
+
+RunService.Heartbeat:Connect(function()
+    local ok, safeZoneStatus = pcall(function()
+        return lp.PlayerGui.Main.HomePage.SafeZoneStatus
+    end)
+    
+    if ok and safeZoneStatus then
+        local isVisible = safeZoneStatus.Visible
+        
+        
+        if lastSafeZoneState == true and isVisible == false and not remoteActivated then
+            Event:FireServer(sellremote)
+            remoteActivated = true
+        end
+        
+        if lastSafeZoneState == false and isVisible == true then
+            remoteActivated = false
+        end
+        
+        lastSafeZoneState = isVisible
+    else
+    -- print(s)
+    end
+end)
+
+
+
+local godmodeApplied = false
+task.wait(1) 
+local playerChar = lp.Character or lp.CharacterAdded:Wait()
+local humanoid = playerChar:FindFirstChildOfClass("Humanoid")
+if humanoid then
+    humanoid.MaxHealth = 0
+    humanoid.Health = 0
+    godmodeApplied = true
+end
+
+local itemsNoDeseados = {
+    "Hourglass",
+    "Random Teleporter", 
+    "Revive Syringe",
+    "Stun Grenade",
+    "Z-Ray Gun",
+    "Teleporter",
+    "Flashlight",
+    "Baseball Bat",
+    "Bandage",
+    "Box",
+    "Bloxy Cola",
+    "Double Barrel"
+}
+
+local itemMonsterTimers = {}  
+local DETECT_DISTANCE = 5
+local FAKE_ITEM_TIME = 3
+
+local function isItemFake(item)
+    local pos = item:FindFirstChildWhichIsA("BasePart") and item:FindFirstChildWhichIsA("BasePart").Position
+    
+    if not pos then return false end
+    
+    for _, monster in ipairs(monstersFolder:GetChildren()) do
+        local monsterPart = monster:FindFirstChildWhichIsA("BasePart")
+        if monsterPart then
+            local dist = (pos - monsterPart.Position).Magnitude
+            if dist <= DETECT_DISTANCE then
+                itemMonsterTimers[item] = tick()
+                return true
+            end
+        end
+    end
+    
+    local lastMonsterTime = itemMonsterTimers[item]
+    if lastMonsterTime and (tick() - lastMonsterTime) > FAKE_ITEM_TIME then
+        itemMonsterTimers[item] = nil
+        return true
+    end
+    
+    return false
+end
+
+itemsFolder.ChildRemoved:Connect(function(child)
+    itemMonsterTimers[child] = nil
+end)
+
+local function isItemDeseado(item)
+    if isItemFake(item) then
+        return false
+    end
+    
+    local ok, itemNameLabel = pcall(function()
+        local folder = item:FindFirstChild("Folder")
+        if not folder then return nil end
+
+        local interactable = folder:FindFirstChild("Interactable")
+        if not interactable then return nil end
+
+        local lootUI = interactable:FindFirstChild("LootUI")
+        if not lootUI then return nil end
+
+        local frame = lootUI:FindFirstChild("Frame")
+        if not frame then return nil end
+
+        return frame:FindFirstChild("ItemName")
+    end)
+
+    if not ok or not itemNameLabel or not itemNameLabel:IsA("TextLabel") then
+        return true
+    end
+
+    local name = itemNameLabel.Text or ""
+
+    for _, bad in ipairs(itemsNoDeseados) do
+        if name == bad then
+            return false
+        end
+    end
+
+    return true
+end
+
+local function interactWithItem(item)
+    local worldItem = itemsFolder:FindFirstChild(item.Name)
+    if worldItem and worldItem.Parent == itemsFolder then
+        Event:FireServer("\x92\a\x91\xC8\x01", {worldItem})
+        return true
+    end
+    
+    Event:FireServer("\x92\a\x91\xC8\x01", {item})
+    return true
+end
+
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.J then
+        _G.autofarm = not _G.autofarm
+    end
+end)
+
+local function getHRP()
+    local char = lp.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function tpTo(pos)
+    local hrp = getHRP()
+    if not hrp or not pos then return false end
+    hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+    return true
+end
+
+local function tpSell()
+    tpTo(sellzonePart.Position)
+    task.wait(0.8)
+end
+
+local function getItemPosition(item)
+    local part = item:FindFirstChildWhichIsA("BasePart") or item.PrimaryPart or item:FindFirstChild("Handle")
+    return part and part.Position
+end
+
+local function lookAtPart(targetPart, distancia)
+    local hrp = getHRP()
+    if not hrp or not targetPart then return end
+
+    distancia = distancia or 4
+
+    local targetPos = targetPart.Position
+    local hrpPos = hrp.Position
+
+    local dir = (hrpPos - targetPos).Unit
+    local desiredPos = targetPos + dir * distancia
+
+    hrp.CFrame = CFrame.new(desiredPos)
+    task.wait()
+
+    local cam = workspace.CurrentCamera
+    cam.CFrame = CFrame.new(cam.CFrame.Position, targetPos)
+end
+
+local function pressKeyEShort()
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.wait(0.1)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+end
+
+local function pressKeyELong()
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.wait(6.0)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+end
+
+local function areHandsFull()
+    local ok, hf = pcall(function()
+        return lp.PlayerGui.Main.HomePage.HandsFull
+    end)
+    return ok and hf and hf.Visible
+end
+
+local function isAlarmRed()
+    local ok, alarm = pcall(function()
+        return lp.PlayerGui.Main.HomePage.Countdown.Main.Alarm
+    end)
+    if not ok or not alarm then return false end
+    local c = alarm.ImageColor3
+    return c.R > 0.9 and c.G < 0.5 and c.B < 0.5
+end
+
+local function isBackpackFull()
+    local ok, bottom = pcall(function()
+        return lp.PlayerGui.Main.HomePage.Bottom
+    end)
+    if not ok then return false end
+    local filled = 0
+    for i = 1, 4 do
+        local slot = bottom:FindFirstChild(tostring(i))
+        if slot then
+            local tool = slot:FindFirstChild("Tool")
+            if tool and tool:IsA("ImageLabel")
+                and tool.Image ~= ""
+                and tool.Image ~= "rbxasset://textures/ui/GuiImagePlaceholder.png" then
+                filled += 1
+            end
+        end
+    end
+    return filled >= 4
+end
+
+local function hayTools()
+    for _, item in ipairs(itemsFolder:GetChildren()) do
+        if (item:IsA("Tool") or item:FindFirstChildOfClass("Tool")) and isItemDeseado(item) then
+            return true
+        end
+    end
+    return false
+end
+
+local function parseNumber(str)
+    if not str then return 0 end
+    str = str:gsub("[^%d]", "")
+    return tonumber(str) or 0
+end
+
+local function isGoalCompleted()
+    local ok, goalText = pcall(function()
+        return lp.PlayerGui.Main.HomePage.Goal.GoalProgressBar.GoalText
+    end)
+    if not ok then return false end
+
+    local cashNum = parseNumber(goalText.Cash.Text)
+    local goalNum = parseNumber(goalText.Goal.Text)
+    return cashNum >= goalNum
+end
+
+local function endRunSequence()
+    print("fin")
+    
+    tpSell()
+    task.wait(2.5)
+
+    if doorController then
+        Event:FireServer("\x92\a\x91\xC8\x01", {doorController})
+        task.wait(1.0)
+    end
+
+    local completed = isGoalCompleted()
+
+    if completed then
+        print("continuando")
+        lookAtPart(continuePart, 4)
+        task.wait(1.0)
+        pressKeyEShort()
+    else
+        print("regresando")
+        lookAtPart(retreatPart, 4)
+        task.wait(1.0)
+        pressKeyELong()
+    end
+end
+
+local function abrirCajas()
+    for _, caja in pairs(cajasFolder:GetChildren()) do
+        if not caja:IsA("Folder") then
+            interactWithItem(caja)
+        end
+    end
+    task.wait(0.5)
+end
+
+local function lootear()
+    if not hayTools() then
+        endRunSequence()
+        return false
+    end
+
+    while not isBackpackFull() do
+        if areHandsFull() then
+            tpSell()
+            task.wait(0.2)
+        end
+
+        local found = false
+        for _, item in ipairs(itemsFolder:GetChildren()) do
+            if isBackpackFull() then break end
+
+            if areHandsFull() then
+                tpSell()
+                task.wait(0.2)
+                break
+            end
+
+            if (item:IsA("Tool") or item:FindFirstChildOfClass("Tool")) and isItemDeseado(item) then
+                local pos = getItemPosition(item)
+                if pos then
+                    local hrp = getHRP()
+                    if hrp and (hrp.Position - pos).Magnitude > 15 then
+                        tpTo(pos)
+                        task.wait(0.3)
+                    end
+                    if not areHandsFull() then
+                        interactWithItem(item)
+                        task.wait(0.25)
+                        found = true
+                    end
+                end
+            end
+        end
+
+        if not found then break end
+        if not hayTools() then
+            endRunSequence()
+            return false
+        end
+    end
+
+    tpSell()
+    return true
+end
+
+task.spawn(function()
+    while true do
+        if _G.autofarm then
+            if isAlarmRed() then
+                tpSell()
+                task.wait(3)
+            else
+                abrirCajas()
+                task.wait(0.3)
+                local ok = lootear()
+                if not ok then
+                    task.wait(3)
+                end
+                task.wait(1.5)
+            end
+        else
+            task.wait(0.1)
+        end
+    end
+end)
+
+
+-- V3
