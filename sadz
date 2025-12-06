@@ -60,6 +60,10 @@ if humanoid then
     godmodeApplied = true
 end
 
+wait(10)
+
+_G.autofarm = true
+
 local itemsNoDeseados = {
     "Hourglass",
     "Random Teleporter", 
@@ -158,6 +162,7 @@ end
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.J then
+        print("Autofarm:", not  _G.autofarm)
         _G.autofarm = not _G.autofarm
     end
 end)
@@ -384,4 +389,4 @@ task.spawn(function()
 end)
 
 
--- V3
+-- V4
